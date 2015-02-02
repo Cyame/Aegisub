@@ -1,56 +1,43 @@
-[submodule "deps/fribidi"]
-	path = deps/fribidi
-	url = git://anongit.freedesktop.org/fribidi/fribidi
-	ignore = dirty
-[submodule "deps/freetype2"]
-	path = deps/freetype2
+[submodule "freetype2"]
+	path = vendor/freetype2
 	url = git://git.sv.nongnu.org/freetype/freetype2.git
 	ignore = dirty
-[submodule "deps/zlib"]
-	path = deps/zlib
-	url = git://github.com/madler/zlib.git
+[submodule "wxWidgets"]
+	path = vendor/wxWidgets
+	url = git://github.com/Aegisub/wxWidgets.git
 	ignore = dirty
-[submodule "deps/wxWidgets"]
-	path = deps/wxWidgets
-	url = git://github.com/wxWidgets/wxWidgets.git
-	ignore = dirty
-[submodule "deps/googletest"]
-	path = deps/googletest
+[submodule "googletest"]
+	path = vendor/googletest
 	url = git://github.com/svn2github/googletest.git
 	ignore = dirty
-[submodule "deps/ffmpeg"]
-	path = deps/ffmpeg
+[submodule "ffmpeg"]
+	path = vendor/ffmpeg
 	url = git://source.ffmpeg.org/ffmpeg.git
 	ignore = dirty
-[submodule "deps/ffms2"]
-	path = deps/ffms2
+[submodule "ffms2"]
+	path = vendor/ffms2
 	url = git://github.com/FFMS/ffms2.git
 	branch = master
 	ignore = dirty
-[submodule "deps/fontconfig"]
-	path = deps/fontconfig
+[submodule "fontconfig"]
+	path = vendor/fontconfig
 	url = git://github.com/tgoyne/fontconfig.git
 	branch = msvc
 	ignore = dirty
-[submodule "deps/libass"]
-	path = deps/libass
-	url = https://code.google.com/p/libass/
+[submodule "libass"]
+	path = vendor/libass
+	url = git://github.com/libass/libass.git
 	branch = master
-[submodule "deps/icu"]
-	path = deps/icu
-	url = git://github.com/sillsdev/icu4c.git
-	branch = trunk
+[submodule "icu"]
+	path = vendor/icu
+	url = git://github.com/svn2github/icu4c.git
+	branch = master
 	ignore = dirty
-[submodule "deps/boost"]
-	path = deps/boost
+[submodule "boost"]
+	path = vendor/boost
 	url = https://github.com/boostorg/boost.git
 	ignore = dirty
-[submodule "deps/lua"]
-	path = deps/lua
-	url = git://github.com/ittner/Lua-experimentation.git
-	branch = lua51
-	ignore = dirty
-[submodule "deps/fftw"]
-	path = deps/fftw
+[submodule "fftw"]
+	path = vendor/fftw
 	url = https://github.com/Aegisub/fftw3.git
 	ignore = dirty
