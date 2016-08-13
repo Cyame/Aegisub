@@ -36,8 +36,10 @@
 #include "../compat.h"
 #include "../dialog_search_replace.h"
 #include "../dialogs.h"
+#include "../frame_main.h"
 #include "../include/aegisub/context.h"
 #include "../libresrc/libresrc.h"
+#include "../main.h"
 #include "../options.h"
 #include "../project.h"
 #include "../search_replace_engine.h"
@@ -215,6 +217,22 @@ struct subtitle_insert_before_videotime final : public validate_nonempty_selecti
 	}
 };
 
+bool is_okay_to_close_subtitles(agi::Context *c) {
+#ifdef __APPLE__
+	return true;
+#else
+	return c->subsController->TryToClose() != wxCANCEL;
+#endif
+}
+
+void load_subtitles(agi::Context *c, agi::fs::path const& path, std::string const& encoding="") {
+#ifdef __APPLE__
+	wxGetApp().NewProjectContext().project->LoadSubtitles(path, encoding);
+#else
+	c->project->LoadSubtitles(path, encoding);
+#endif
+}
+
 struct subtitle_new final : public Command {
 	CMD_NAME("subtitle/new")
 	CMD_ICON(new_toolbutton)
@@ -223,8 +241,24 @@ struct subtitle_new final : public Command {
 	STR_HELP("New subtitles")
 
 	void operator()(agi::Context *c) override {
-		if (c->subsController->TryToClose() != wxCANCEL)
+#ifdef __APPLE__
+		wxGetApp().NewProjectContext();
+#else
+		if (is_okay_to_close_subtitles(c))
 			c->project->CloseSubtitles();
+#endif
+	}
+};
+
+struct subtitle_close final : public Command {
+	CMD_NAME("subtitle/close")
+	CMD_ICON(new_toolbutton)
+	STR_MENU("Close")
+	STR_DISP("Close")
+	STR_HELP("Close")
+
+	void operator()(agi::Context *c) override {
+		c->frame->Close();
 	}
 };
 
@@ -236,10 +270,11 @@ struct subtitle_open final : public Command {
 	STR_HELP("Open a subtitles file")
 
 	void operator()(agi::Context *c) override {
-		if (c->subsController->TryToClose() == wxCANCEL) return;
+		if (!is_okay_to_close_subtitles(c)) return;
+
 		auto filename = OpenFileSelector(_("Open subtitles file"), "Path/Last/Subtitles", "","", SubtitleFormat::GetWildcards(0), c->parent);
 		if (!filename.empty())
-			c->project->LoadSubtitles(filename);
+			load_subtitles(c, filename);
 	}
 };
 
@@ -250,10 +285,10 @@ struct subtitle_open_autosave final : public Command {
 	STR_HELP("Open a previous version of a file which was autosaved by Aegisub")
 
 	void operator()(agi::Context *c) override {
-		if (c->subsController->TryToClose() == wxCANCEL) return;
-		auto file = PickAutosaveFile(c->parent);
-		if (!file.empty())
-			c->project->LoadSubtitles(file);
+		if (!is_okay_to_close_subtitles(c)) return;
+		auto filename = PickAutosaveFile(c->parent);
+		if (!filename.empty())
+			load_subtitles(c, filename);
 	}
 };
 
@@ -265,7 +300,7 @@ struct subtitle_open_charset final : public Command {
 	STR_HELP("Open a subtitles file with a specific file encoding")
 
 	void operator()(agi::Context *c) override {
-		if (c->subsController->TryToClose() == wxCANCEL) return;
+		if (!is_okay_to_close_subtitles(c)) return;
 
 		auto filename = OpenFileSelector(_("Open subtitles file"), "Path/Last/Subtitles", "","", SubtitleFormat::GetWildcards(0), c->parent);
 		if (filename.empty()) return;
@@ -273,7 +308,7 @@ struct subtitle_open_charset final : public Command {
 		wxString charset = wxGetSingleChoice(_("Choose charset code:"), _("Charset"), agi::charset::GetEncodingsList<wxArrayString>(), c->parent, -1, -1, true, 250, 200);
 		if (charset.empty()) return;
 
-		c->project->LoadSubtitles(filename, from_wx(charset));
+		load_subtitles(c, filename, from_wx(charset));
 	}
 };
 
@@ -425,6 +460,7 @@ namespace cmd {
 		reg(agi::make_unique<subtitle_insert_before>());
 		reg(agi::make_unique<subtitle_insert_before_videotime>());
 		reg(agi::make_unique<subtitle_new>());
+		reg(agi::make_unique<subtitle_close>());
 		reg(agi::make_unique<subtitle_open>());
 		reg(agi::make_unique<subtitle_open_autosave>());
 		reg(agi::make_unique<subtitle_open_charset>());

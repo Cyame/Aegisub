@@ -59,7 +59,6 @@ src_OBJ := \
 	$(d)export_framerate.o \
 	$(d)fft.o \
 	$(d)font_file_lister.o \
-	$(d)font_file_lister_fontconfig.o \
 	$(d)frame_main.o \
 	$(d)gl_text.o \
 	$(d)gl_wrap.o \
@@ -116,10 +115,13 @@ src_OBJ := \
 	$(TOP)lib/libaegisub.a \
 	$(TOP)lib/libluabins.a \
 	$(TOP)lib/libresrc.a \
-	$(TOP)lib/libuniversalchardet.a \
 
 ifeq (yes, $(BUILD_DARWIN))
+src_OBJ += $(d)font_file_lister_coretext.o
 src_OBJ += $(subst .mm,.o,$(wildcard $(d)osx/*.mm))
+$(d)font_file_lister_coretext.o_FLAGS := -fobjc-arc
+else
+src_OBJ += $(d)font_file_lister_fontconfig.o
 endif
 
 ###############
@@ -179,6 +181,10 @@ src_LIBS += $(LIBS_HUNSPELL)
 src_OBJ += $(d)spellchecker_hunspell.o
 endif
 
+ifeq (yes, $(HAVE_UCHARDET))
+src_LIBS += $(LIBS_UCHARDET)
+endif
+
 #####################
 # SOURCE-LEVEL CFLAGS
 #####################
@@ -192,10 +198,10 @@ $(d)subtitles_provider.o_FLAGS          := $(CFLAGS_LIBASS)
 $(d)subtitles_provider_libass.o_FLAGS   := $(CFLAGS_LIBASS) -Wno-c++11-narrowing
 $(d)text_file_reader.o_FLAGS            := -D_X86_
 $(d)video_provider_manager.o_FLAGS      := $(CFLAGS_FFMS2)
-$(d)auto4_lua.o_FLAGS                   := -I$(TOP)vendor/luajit/include
-$(d)auto4_lua_assfile.o_FLAGS           := -I$(TOP)vendor/luajit/include
-$(d)auto4_lua_dialog.o_FLAGS            := -I$(TOP)vendor/luajit/include
-$(d)auto4_lua_progresssink.o_FLAGS      := -I$(TOP)vendor/luajit/include
+$(d)auto4_lua.o_FLAGS                   := $(CFLAGS_LUA)
+$(d)auto4_lua_assfile.o_FLAGS           := $(CFLAGS_LUA)
+$(d)auto4_lua_dialog.o_FLAGS            := $(CFLAGS_LUA)
+$(d)auto4_lua_progresssink.o_FLAGS      := $(CFLAGS_LUA)
 
 $(src_OBJ): $(d)libresrc/bitmap.h $(d)libresrc/default_config.h
 

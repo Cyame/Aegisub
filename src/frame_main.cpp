@@ -161,8 +161,6 @@ FrameMain::FrameMain()
 }
 
 FrameMain::~FrameMain () {
-	wxGetApp().frame = nullptr;
-
 	context->project->CloseAudio();
 	context->project->CloseVideo();
 
@@ -259,7 +257,7 @@ void FrameMain::UpdateTitle() {
 	newTitle << " - Aegisub " << GetAegisubLongVersionString();
 #endif
 
-#if defined(__WXMAC__) && !defined(__LP64__)
+#if defined(__WXMAC__)
 	// On Mac, set the mark in the close button
 	OSXSetModified(context->subsController->IsModified());
 #endif

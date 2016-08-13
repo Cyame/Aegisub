@@ -48,8 +48,18 @@
 #include <wx/zipstrm.h>
 
 namespace {
+enum class FcMode {
+	CheckFontsOnly = 0,
+	CopyToFolder = 1,
+	CopyToScriptFolder = 2,
+	CopyToZip = 3,
+	SymlinkToFolder = 4
+};
+
 class DialogFontsCollector final : public wxDialog {
 	AssFile *subs;
+	agi::Path &path;
+	FcMode mode = FcMode::CheckFontsOnly;
 
 	wxStyledTextCtrl *collection_log;
 	wxButton *close_btn;
@@ -68,16 +78,10 @@ class DialogFontsCollector final : public wxDialog {
 	/// Collection complete notification from the worker thread to reenable buttons
 	void OnCollectionComplete(wxThreadEvent &);
 
+	void UpdateControls();
+
 public:
 	DialogFontsCollector(agi::Context *c);
-};
-
-enum FcMode {
-	CheckFontsOnly = 0,
-	CopyToFolder = 1,
-	CopyToScriptFolder = 2,
-	CopyToZip = 3,
-	SymlinkToFolder = 4
 };
 
 using color_str_pair = std::pair<int, wxString>;
@@ -98,17 +102,17 @@ void FontsCollectorThread(AssFile *subs, agi::fs::path const& destination, FcMod
 
 		// Copy fonts
 		switch (oper) {
-			case CheckFontsOnly:
+			case FcMode::CheckFontsOnly:
 				collector->AddPendingEvent(wxThreadEvent(EVT_COLLECTION_DONE));
 				return;
-			case SymlinkToFolder:
+			case FcMode::SymlinkToFolder:
 				AppendText(_("Symlinking fonts to folder...\n"), 0);
 				break;
-			case CopyToScriptFolder:
-			case CopyToFolder:
+			case FcMode::CopyToScriptFolder:
+			case FcMode::CopyToFolder:
 				AppendText(_("Copying fonts to folder...\n"), 0);
 				break;
-			case CopyToZip:
+			case FcMode::CopyToZip:
 				AppendText(_("Copying fonts to archive...\n"), 0);
 				break;
 		}
@@ -116,7 +120,7 @@ void FontsCollectorThread(AssFile *subs, agi::fs::path const& destination, FcMod
 		// Open zip stream if saving to compressed archive
 		std::unique_ptr<wxFFileOutputStream> out;
 		std::unique_ptr<wxZipOutputStream> zip;
-		if (oper == CopyToZip) {
+		if (oper == FcMode::CopyToZip) {
 			try {
 				agi::fs::CreateDirectory(destination.parent_path());
 			}
@@ -147,14 +151,14 @@ void FontsCollectorThread(AssFile *subs, agi::fs::path const& destination, FcMod
 			total_size += agi::fs::Size(path);
 
 			switch (oper) {
-				case SymlinkToFolder:
-				case CopyToScriptFolder:
-				case CopyToFolder: {
+				case FcMode::SymlinkToFolder:
+				case FcMode::CopyToScriptFolder:
+				case FcMode::CopyToFolder: {
 					auto dest = destination/path.filename();
 					if (agi::fs::FileExists(dest))
 						ret = 2;
 #ifndef _WIN32
-					else if (oper == SymlinkToFolder) {
+					else if (oper == FcMode::SymlinkToFolder) {
 						// returns 0 on success, -1 on error...
 						if (symlink(path.c_str(), dest.c_str()))
 							ret = 0;
@@ -174,7 +178,7 @@ void FontsCollectorThread(AssFile *subs, agi::fs::path const& destination, FcMod
 				}
 				break;
 
-				case CopyToZip: {
+				case FcMode::CopyToZip: {
 					wxFFileInputStream in(path.wstring());
 					if (!in.IsOk())
 						ret = false;
@@ -215,6 +219,7 @@ void FontsCollectorThread(AssFile *subs, agi::fs::path const& destination, FcMod
 DialogFontsCollector::DialogFontsCollector(agi::Context *c)
 : wxDialog(c->parent, -1, _("Fonts Collector"))
 , subs(c->ass.get())
+, path(*c->path)
 {
 	SetIcon(GETICON(font_collector_button_16));
 
@@ -227,16 +232,18 @@ DialogFontsCollector::DialogFontsCollector(agi::Context *c)
 		,_("Symlink fonts to folder")
 #endif
 	};
-	collection_mode = new wxRadioBox(this, -1, _("Action"), wxDefaultPosition, wxDefaultSize, countof(modes), modes, 1);
-	collection_mode->SetSelection(mid<int>(0, OPT_GET("Tool/Fonts Collector/Action")->GetInt(), 4));
 
-	if (config::path->Decode("?script") == "?script")
+	mode = static_cast<FcMode>(mid<int>(0, OPT_GET("Tool/Fonts Collector/Action")->GetInt(), countof(modes)));
+	collection_mode = new wxRadioBox(this, -1, _("Action"), wxDefaultPosition, wxDefaultSize, countof(modes), modes, 1);
+	collection_mode->SetSelection(static_cast<int>(mode));
+
+	if (c->path->Decode("?script") == "?script")
 		collection_mode->Enable(2, false);
 
 	wxStaticBoxSizer *destination_box = new wxStaticBoxSizer(wxVERTICAL, this, _("Destination"));
 
 	dest_label = new wxStaticText(this, -1, " ");
-	dest_ctrl = new wxTextCtrl(this, -1, config::path->Decode(OPT_GET("Path/Fonts Collector Destination")->GetString()).wstring());
+	dest_ctrl = new wxTextCtrl(this, -1, c->path->Decode(OPT_GET("Path/Fonts Collector Destination")->GetString()).wstring());
 	dest_browse_button = new wxButton(this, -1, _("&Browse..."));
 
 	wxSizer *dest_browse_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -272,8 +279,7 @@ DialogFontsCollector::DialogFontsCollector(agi::Context *c)
 	CenterOnParent();
 
 	// Update the browse button and label
-	wxCommandEvent evt;
-	OnRadio(evt);
+	UpdateControls();
 
 	start_btn->Bind(wxEVT_BUTTON, &DialogFontsCollector::OnStart, this);
 	dest_browse_button->Bind(wxEVT_BUTTON, &DialogFontsCollector::OnBrowse, this);
@@ -289,12 +295,10 @@ void DialogFontsCollector::OnStart(wxCommandEvent &) {
 	collection_log->SetReadOnly(true);
 
 	agi::fs::path dest;
-	int action = collection_mode->GetSelection();
-	OPT_SET("Tool/Fonts Collector/Action")->SetInt(action);
-	if (action != CheckFontsOnly) {
-		dest = config::path->Decode(action == CopyToScriptFolder ? "?script/" : from_wx(dest_ctrl->GetValue()));
+	if (mode != FcMode::CheckFontsOnly) {
+		dest = path.Decode(mode == FcMode::CopyToScriptFolder ? "?script/" : from_wx(dest_ctrl->GetValue()));
 
-		if (action != CopyToZip) {
+		if (mode != FcMode::CopyToZip) {
 			if (agi::fs::FileExists(dest))
 				wxMessageBox(_("Invalid destination."), _("Error"), wxOK | wxICON_ERROR | wxCENTER, this);
 			try {
@@ -311,7 +315,7 @@ void DialogFontsCollector::OnStart(wxCommandEvent &) {
 		}
 	}
 
-	if (action != CheckFontsOnly)
+	if (mode != FcMode::CheckFontsOnly)
 		OPT_SET("Path/Fonts Collector Destination")->SetString(dest.string());
 
 	// Disable the UI while it runs as we don't support canceling
@@ -323,12 +327,12 @@ void DialogFontsCollector::OnStart(wxCommandEvent &) {
 	collection_mode->Enable(false);
 	dest_label->Enable(false);
 
-	FontsCollectorThread(subs, dest, static_cast<FcMode>(action), GetEventHandler());
+	FontsCollectorThread(subs, dest, mode, GetEventHandler());
 }
 
 void DialogFontsCollector::OnBrowse(wxCommandEvent &) {
 	wxString dest;
-	if (collection_mode->GetSelection() == CopyToZip) {
+	if (mode == FcMode::CopyToZip) {
 		dest = wxFileSelector(
 			_("Select archive file name"),
 			dest_ctrl->GetValue(),
@@ -343,11 +347,16 @@ void DialogFontsCollector::OnBrowse(wxCommandEvent &) {
 		dest_ctrl->SetValue(dest);
 }
 
-void DialogFontsCollector::OnRadio(wxCommandEvent &) {
-	int value = collection_mode->GetSelection();
+void DialogFontsCollector::OnRadio(wxCommandEvent &evt) {
+	OPT_SET("Tool/Fonts Collector/Action")->SetInt(evt.GetInt());
+	mode = static_cast<FcMode>(evt.GetInt());
+	UpdateControls();
+}
+
+void DialogFontsCollector::UpdateControls() {
 	wxString dst = dest_ctrl->GetValue();
 
-	if (value == CheckFontsOnly || value == CopyToScriptFolder) {
+	if (mode == FcMode::CheckFontsOnly || mode == FcMode::CopyToScriptFolder) {
 		dest_ctrl->Enable(false);
 		dest_browse_button->Enable(false);
 		dest_label->Enable(false);
@@ -358,7 +367,7 @@ void DialogFontsCollector::OnRadio(wxCommandEvent &) {
 		dest_browse_button->Enable(true);
 		dest_label->Enable(true);
 
-		if (value == CopyToFolder || value == SymlinkToFolder) {
+		if (mode == FcMode::CopyToFolder || mode == FcMode::SymlinkToFolder) {
 			dest_label->SetLabel(_("Choose the folder where the fonts will be collected to. It will be created if it doesn't exist."));
 
 			// Remove filename from browse box
@@ -376,6 +385,12 @@ void DialogFontsCollector::OnRadio(wxCommandEvent &) {
 			}
 		}
 	}
+
+#ifdef __APPLE__
+	// wxStaticText auto-wraps everywhere but OS X
+	dest_label->Wrap(dest_label->GetParent()->GetSize().GetWidth() - 20);
+	Layout();
+#endif
 }
 
 void DialogFontsCollector::OnAddText(ValueEvent<color_str_pair> &event) {
@@ -397,7 +412,7 @@ void DialogFontsCollector::OnCollectionComplete(wxThreadEvent &) {
 	start_btn->Enable();
 	close_btn->Enable();
 	collection_mode->Enable();
-	if (config::path->Decode("?script") == "?script")
+	if (path.Decode("?script") == "?script")
 		collection_mode->Enable(2, false);
 
 	wxCommandEvent evt;

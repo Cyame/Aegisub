@@ -42,39 +42,30 @@
 
 namespace agi { class BackgroundRunner; }
 
-/// Index all tracks
-#define FFMS_TRACKMASK_ALL		-1
-/// Index no tracks
-#define FFMS_TRACKMASK_NONE		0
-
 /// @class FFmpegSourceProvider
 /// @brief Base class for FFMS2 source providers; contains common functions etc
 class FFmpegSourceProvider {
 	friend class FFmpegSourceCacheCleaner;
-	agi::scoped_holder<bool> COMInited; ///< COM initialization state
 	agi::BackgroundRunner *br;
 
 public:
 	FFmpegSourceProvider(agi::BackgroundRunner *br);
 
-	/// Logging level constants from avutil/log.h
-	enum FFMS_LogLevel {
-		/// nothing printed
-		FFMS_LOG_QUIET		= -8,
-		FFMS_LOG_PANIC		= 0,
-		FFMS_LOG_FATAL		= 8,
-		FFMS_LOG_ERROR		= 16,
-		FFMS_LOG_WARNING	= 24,
-		FFMS_LOG_INFO		= 32,
-		FFMS_LOG_VERBOSE	= 40,
-		FFMS_LOG_DEBUG		= 48,
+	// X11 is wonderful
+#undef None
+
+	enum class TrackSelection : int {
+		None = -1,
+		All = -2
 	};
 
 	void CleanCache();
 
-	FFMS_Index *DoIndexing(FFMS_Indexer *Indexer, agi::fs::path const& Cachename, int Trackmask, FFMS_IndexErrorHandling IndexEH);
+	FFMS_Index *DoIndexing(FFMS_Indexer *Indexer, agi::fs::path const& Cachename,
+		                   TrackSelection Track,
+		                   FFMS_IndexErrorHandling IndexEH);
 	std::map<int, std::string> GetTracksOfType(FFMS_Indexer *Indexer, FFMS_TrackType Type);
-	int AskForTrackSelection(const std::map<int, std::string>& TrackList, FFMS_TrackType Type);
+	TrackSelection AskForTrackSelection(const std::map<int, std::string>& TrackList, FFMS_TrackType Type);
 	agi::fs::path GetCacheFilename(agi::fs::path const& filename);
 	void SetLogLevel();
 	FFMS_IndexErrorHandling GetErrorHandlingMode();

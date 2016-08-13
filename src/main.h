@@ -36,6 +36,9 @@
 #endif
 
 class FrameMain;
+namespace agi {
+	struct Context;
+}
 
 class AegisubApp : public wxApp {
 	friend class FrameMain;
@@ -48,21 +51,26 @@ class AegisubApp : public wxApp {
 	void OnFatalException() override;
 	bool OnExceptionInMainLoop() override;
 
-	/// @brief Handle wx assertions and redirect to the logging system.
-	/// @param file File name
-	/// @param line Line number
-	/// @param func Function name
-	/// @param cond Condition
-	/// @param msg  Message
 	void OnAssertFailure(const wxChar *file, int line, const wxChar *func, const wxChar *cond, const wxChar *msg) override;
 
-	FrameMain *frame = nullptr;
+	void UnhandledException(bool);
+
+	void OpenFiles(wxArrayStringsAdapter filenames);
+
+	std::vector<FrameMain *> frames;
 public:
 	AegisubApp();
 	AegisubLocale locale;
 
+	agi::Context& NewProjectContext();
+	void CloseAll();
+
 	// Apple events
-	void MacOpenFile(const wxString &filename);
+	void MacOpenFiles(wxArrayString const& filenames)
+#ifdef __APPLE__
+		override
+#endif
+	;
 };
 
 wxDECLARE_APP(AegisubApp);

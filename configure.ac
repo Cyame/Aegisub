@@ -38,9 +38,6 @@ AS_CASE([$host],
         [*-*-darwin*], [build_darwin="yes"],
         [*-*-linux*],  [build_linux="yes"])
 
-# Used for universalchardet.
-AC_AGI_MDCPUCFG($host)
-
 AC_SUBST(build_darwin)
 
 ########################
@@ -125,8 +122,10 @@ AC_SUBST([BUILD_DATE])
 ###################################################
 # Check for pthreads and setup variables / compiler
 ###################################################
-ACX_PTHREAD([], [AC_MSG_FAILURE([You must have working pthreads.])])
-CC="$PTHREAD_CC"
+AS_IF([test x$build_darwin != xyes], [
+  ACX_PTHREAD([], [AC_MSG_FAILURE([You must have working pthreads.])])
+  CC="$PTHREAD_CC"
+])
 
 ######################
 # Check compiler flags
@@ -188,21 +187,28 @@ AC_ARG_ENABLE(sanity-checks,
 ### Required Dependencies
 #########################
 
-AC_PATH_XTRA
-AS_IF([test x$no_x = xyes && test x$build_darwin != xyes],
-      [AC_MSG_FAILURE([You must have a working copy of X installed.])])
+AS_IF([test x$build_darwin != xyes], [
+  AC_PATH_XTRA
+  AS_IF([test x$no_x = xyes],
+        [AC_MSG_FAILURE([You must have a working copy of X installed.])])
 
-AX_CHECK_GL
-AS_IF([test x$no_gl = xyes], [AC_MSG_FAILURE([Aegisub requires GL support.])])
+  AX_CHECK_GL
+  AS_IF([test x$no_gl = xyes], [AC_MSG_FAILURE([Aegisub requires GL support.])])
+], [
+  AC_CHECK_HEADERS([OpenGL/gl.h])
+])
 AC_SUBST(GL_CFLAGS)
 AC_SUBST(GL_LIBS)
 
 PKG_CHECK_MODULES(FREETYPE, freetype2 >= freetype_required_version)
-PKG_CHECK_MODULES(FONTCONFIG, fontconfig >= fontconfig_required_version)
-PKG_CHECK_MODULES(LIBASS, libass >= libass_required_version)
 
-FONTCONFIG_CONF_DIR=$($PKG_CONFIG --variable=confdir fontconfig)
-AC_SUBST(FONTCONFIG_CONF_DIR)
+AS_IF([test x$build_darwin != xyes], [
+  PKG_CHECK_MODULES(FONTCONFIG, fontconfig >= fontconfig_required_version)
+  FONTCONFIG_CONF_DIR=$($PKG_CONFIG --variable=confdir fontconfig)
+  AC_SUBST(FONTCONFIG_CONF_DIR)
+])
+
+PKG_CHECK_MODULES(LIBASS, libass >= libass_required_version)
 
 AX_BOOST_BASE([boost_required_version])
 AX_BOOST_LIB(chrono,     BOOST_CHRONO_LIB,     [chrono.hpp], [boost::chrono::system_clock::time_point time])
@@ -375,6 +381,61 @@ AGI_OPT_PKG(ffms2, [build without ffms2 A/V provider [auto]], [Enable FFMS2 supp
 
 AGI_OPT_PKG(fftw3, [build without fftw support [auto]], [Enable fftw support])
 AGI_OPT_PKG(hunspell, [build without hunspell spell-checking [auto]], [Enable Hunspell support])
+AGI_OPT_PKG(uchardet, [build without automatic character set detection [auto]], [Enable uchardet support])
+
+########
+# LuaJIT
+########
+system_luajit="bundled"
+AC_ARG_WITH(system-luajit, AS_HELP_STRING([--without-system-luajit], [Use built-in LuaJIT [auto]]))
+# Check if it's available at all
+AS_IF([test x$with_system_luajit = xno], [],
+      [PKG_CHECK_MODULES(LUAJIT, luajit >= 2.0.0, [], [
+       AS_IF([test x$with_system_luajit = xyes],
+             [AC_MSG_FAILURE([--with-sytem-luajit was specified, but luajit could not be found])])
+       with_system_luajit="no"])])
+
+# Check if it's compiled in Lua 5.2 mode
+# This check can be skipped by manually setting agi_cv_luajit_is_52
+AS_IF([test x$with_system_luajit != xno], [
+  aegisub_save_LIBS="$LIBS"
+  aegisub_save_CPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS $LUAJIT_CFLAGS"
+  LIBS="$LIBS $LUAJIT_LIBS"
+  AC_CACHE_CHECK(
+    [whether LuaJIT is compiled in 5.2 mode], [agi_cv_luajit_is_52],
+    [AC_RUN_IFELSE([AC_LANG_PROGRAM(
+     [[#include <lauxlib.h>]],
+     [[lua_State *L = luaL_newstate();
+       if (!L) return 1;
+       // This is valid in lua 5.2, but a syntax error in 5.1
+       const char testprogram[] = "function foo() while true do break return end end";
+       return luaL_loadstring(L, testprogram) == LUA_ERRSYNTAX;
+     ]])], [agi_cv_luajit_is_52="yes"], [agi_cv_luajit_is_52="no"])])
+  CPPFLAGS="$aegisub_save_CPPFLAGS"
+  LIBS="$aegisub_save_LIBS"
+
+  if test $agi_cv_luajit_is_52 != yes; then
+    AS_IF([test x$with_system_luajit = xyes],
+          [AC_MSG_FAILURE([LuaJIT must be compiled in Lua 5.2 mode])])
+    with_system_luajit="no"
+  else
+    with_system_luajit="yes"
+    system_luajit="system"
+  fi
+])
+
+AS_IF([test $with_system_luajit = no],
+      [AC_SUBST([LUAJIT_CFLAGS], ['-I$(TOP)vendor/luajit/include'])
+       AC_SUBST([LUAJIT_LIBS], ['$(TOP)vendor/luajit/src/libluajit.a'])])
+
+# We also need a Lua binary to run part of the build system
+# Which version doesn't matter as the scripts are portable between them
+AC_CHECK_PROGS([LUA], [lua luajit lua5.3 lua-5.3 lua5.2 lua-5.2 lua5.1 lua-5.1])
+
+# If the user doesn't have an installed copy of Lua, just use the one built
+# as part of building LuaJIT
+AS_IF([test -z $LUA], [LUA="$srcdir/vendor/luajit/src/host/minilua"])
 
 ######################################################
 # Debugging support
@@ -562,6 +623,8 @@ Audio Players
   PulseAudio:            $with_libpulse $libpulse_disabled
 
 Misc Packages
+  uchardet:              $with_uchardet $uchardet_disabled
   Hunspell:              $with_hunspell $hunspell_disabled
   FFTW3:                 $with_fftw3 $fftw3_disabled
+  LuaJIT:                $system_luajit
 ])

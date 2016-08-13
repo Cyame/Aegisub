@@ -164,11 +164,7 @@ struct parsed_line {
 	std::vector<std::unique_ptr<AssDialogueBlock>> blocks;
 
 	parsed_line(AssDialogue *line) : line(line), blocks(line->ParseTags()) { }
-#ifdef _MSC_VER
-	parsed_line(parsed_line&& r) : line(r.line), blocks(std::move(r.blocks)) { }
-#else
 	parsed_line(parsed_line&& r) = default;
-#endif
 
 	const AssOverrideTag *find_tag(int blockn, std::string const& tag_name, std::string const& alt) const {
 		for (auto ovr : blocks | sliced(0, blockn + 1) | reversed | agi::of_type<AssDialogueBlockOverride>()) {
@@ -855,7 +851,7 @@ struct edit_line_paste final : public Command {
 	bool Validate(const agi::Context *) override {
 		bool can_paste = false;
 		if (wxTheClipboard->Open()) {
-			can_paste = wxTheClipboard->IsSupported(wxDF_TEXT);
+			can_paste = wxTheClipboard->IsSupported(wxDF_TEXT) || wxTheClipboard->IsSupported(wxDF_UNICODETEXT);
 			wxTheClipboard->Close();
 		}
 		return can_paste;
@@ -886,7 +882,7 @@ struct edit_line_paste_over final : public Command {
 	bool Validate(const agi::Context *c) override {
 		bool can_paste = !c->selectionController->GetSelectedSet().empty();
 		if (can_paste && wxTheClipboard->Open()) {
-			can_paste = wxTheClipboard->IsSupported(wxDF_TEXT);
+			can_paste = wxTheClipboard->IsSupported(wxDF_TEXT) || wxTheClipboard->IsSupported(wxDF_UNICODETEXT);
 			wxTheClipboard->Close();
 		}
 		return can_paste;
@@ -1052,7 +1048,7 @@ struct edit_line_split_by_karaoke final : public validate_sel_nonempty {
 		Selection new_sel;
 		AssKaraoke kara;
 
-		bool did_split = false;
+		std::vector<std::unique_ptr<AssDialogue>> to_delete;
 		for (auto line : sel) {
 			kara.SetLine(line);
 
@@ -1071,17 +1067,17 @@ struct edit_line_split_by_karaoke final : public validate_sel_nonempty {
 				new_sel.insert(new_line);
 			}
 
-			delete line;
-			did_split = true;
+			c->ass->Events.erase(c->ass->iterator_to(*line));
+			to_delete.emplace_back(line);
 		}
 
-		if (!did_split) return;
+		if (to_delete.empty()) return;
 
 		c->ass->Commit(_("splitting"), AssFile::COMMIT_DIAG_ADDREM | AssFile::COMMIT_DIAG_FULL);
 
 		AssDialogue *new_active = c->selectionController->GetActiveLine();
 		if (!new_sel.count(c->selectionController->GetActiveLine()))
-			new_active = *sel.begin();
+			new_active = *new_sel.begin();
 		c->selectionController->SetSelectionAndActive(std::move(new_sel), new_active);
 	}
 };

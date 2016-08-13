@@ -1,4 +1,4 @@
-#!../vendor/luajit/src/host/minilua
+#!/usr/bin/env luajit
 -- Copyright (c) 2014, Thomas Goyne <plorkyeran@aegisub.org>
 --
 -- Permission to use, copy, modify, and distribute this software for any
@@ -44,7 +44,7 @@ out_cpp:write('#include "libresrc.h"\n')
 for line in manifest:lines() do
   if line:find('.') then
     local file = try_open(path..line, 'rb')
-    local id = line:gsub('^.*/', ''):gsub('\.[a-z]+$', '')
+    local id = line:gsub('^.*/', ''):gsub('%.[a-z]+$', '')
     out_cpp:write("const unsigned char " .. id .. "[] = {")
 
     local len = 0

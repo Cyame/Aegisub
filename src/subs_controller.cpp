@@ -32,6 +32,7 @@
 #include "subtitle_format.h"
 #include "text_selection_controller.h"
 
+#include <libaegisub/dispatch.h>
 #include <libaegisub/format_path.h>
 #include <libaegisub/fs.h>
 #include <libaegisub/path.h>
@@ -146,27 +147,18 @@ SubsController::SubsController(agi::Context *context)
 : context(context)
 , undo_connection(context->ass->AddUndoManager(&SubsController::OnCommit, this))
 , text_selection_connection(context->textSelectionController->AddSelectionListener(&SubsController::OnTextSelectionChanged, this))
+, autosave_queue(agi::dispatch::Create())
 {
 	autosave_timer_changed(&autosave_timer);
 	OPT_SUB("App/Auto/Save", [=] { autosave_timer_changed(&autosave_timer); });
 	OPT_SUB("App/Auto/Save Every Seconds", [=] { autosave_timer_changed(&autosave_timer); });
-
-	autosave_timer.Bind(wxEVT_TIMER, [=](wxTimerEvent&) {
-		try {
-			auto fn = AutoSave();
-			if (!fn.empty())
-				context->frame->StatusTimeout(fmt_tl("File backup saved as \"%s\".", fn));
-		}
-		catch (const agi::Exception& err) {
-			context->frame->StatusTimeout(to_wx("Exception when attempting to autosave file: " + err.GetMessage()));
-		}
-		catch (...) {
-			context->frame->StatusTimeout("Unhandled exception when attempting to autosave file.");
-		}
-	});
+	autosave_timer.Bind(wxEVT_TIMER, [=](wxTimerEvent&) { AutoSave(); });
 }
 
-SubsController::~SubsController() { }
+SubsController::~SubsController() {
+	// Make sure there are no autosaves in progress
+	autosave_queue->Sync([]{ });
+}
 
 void SubsController::SetSelectionController(SelectionController *selection_controller) {
 	active_line_connection = context->selectionController->AddActiveLineListener(&SubsController::OnActiveLineChanged, this);
@@ -196,7 +188,7 @@ ProjectProperties SubsController::Load(agi::fs::path const& filename, std::strin
 		if (path_str.empty())
 			path = filename.parent_path();
 		else
-			path = config::path->Decode(path_str);
+			path = context->path->Decode(path_str);
 		agi::fs::CreateDirectory(path);
 		agi::fs::Copy(filename, path/(filename.stem().string() + ".ORIGINAL" + filename.extension().string()));
 	}
@@ -217,7 +209,7 @@ void SubsController::Save(agi::fs::path const& filename, std::string const& enco
 		// Have to set this now for the sake of things that want to save paths
 		// relative to the script in the header
 		this->filename = filename;
-		config::path->SetToken("?script", filename.parent_path());
+		context->path->SetToken("?script", filename.parent_path());
 
 		context->ass->CleanExtradata();
 		writer->WriteFile(context->ass.get(), filename, 0, encoding);
@@ -260,26 +252,43 @@ int SubsController::TryToClose(bool allow_cancel) const {
 	return result;
 }
 
-agi::fs::path SubsController::AutoSave() {
+void SubsController::AutoSave() {
 	if (commit_id == autosaved_commit_id)
-		return "";
+		return;
 
-	auto path = config::path->Decode(OPT_GET("Path/Auto/Save")->GetString());
-	if (path.empty())
-		path = filename.parent_path();
-
-	agi::fs::CreateDirectory(path);
+	auto directory = context->path->Decode(OPT_GET("Path/Auto/Save")->GetString());
+	if (directory.empty())
+		directory = filename.parent_path();
 
 	auto name = filename.filename();
 	if (name.empty())
 		name = "Untitled";
 
-	path /= agi::format("%s.%s.AUTOSAVE.ass", name.string(), agi::util::strftime("%Y-%m-%d-%H-%M-%S"));
-
-	SubtitleFormat::GetWriter(path)->WriteFile(context->ass.get(), path, 0);
 	autosaved_commit_id = commit_id;
+	auto frame = context->frame;
+	auto subs_copy = new AssFile(*context->ass);
+	autosave_queue->Async([subs_copy, name, directory, frame] {
+		wxString msg;
+		std::unique_ptr<AssFile> subs(subs_copy);
 
-	return path;
+		try {
+			agi::fs::CreateDirectory(directory);
+			auto path = directory /  agi::format("%s.%s.AUTOSAVE.ass", name.string(),
+			                                     agi::util::strftime("%Y-%m-%d-%H-%M-%S"));
+			SubtitleFormat::GetWriter(path)->WriteFile(subs.get(), path, 0);
+			msg = fmt_tl("File backup saved as \"%s\".", path);
+		}
+		catch (const agi::Exception& err) {
+			msg = to_wx("Exception when attempting to autosave file: " + err.GetMessage());
+		}
+		catch (...) {
+			msg = "Unhandled exception when attempting to autosave file.";
+		}
+
+		agi::dispatch::Main().Async([frame, msg] {
+			frame->StatusTimeout(msg);
+		});
+	});
 }
 
 bool SubsController::CanSave() const {
@@ -293,7 +302,7 @@ bool SubsController::CanSave() const {
 
 void SubsController::SetFileName(agi::fs::path const& path) {
 	filename = path;
-	config::path->SetToken("?script", path.parent_path());
+	context->path->SetToken("?script", path.parent_path());
 	config::mru->Add("Subtitle", path);
 	OPT_SET("Path/Last/Subtitles")->SetString(filename.parent_path().string());
 }
@@ -301,12 +310,10 @@ void SubsController::SetFileName(agi::fs::path const& path) {
 void SubsController::OnCommit(AssFileCommit c) {
 	if (c.message.empty() && !undo_stack.empty()) return;
 
-	static int next_commit_id = 1;
-
 	commit_id = next_commit_id++;
 	// Allow coalescing only if it's the last change and the file has not been
 	// saved since the last change
-	if (commit_id == *c.commit_id+1 && redo_stack.empty() && saved_commit_id+1 != commit_id && autosaved_commit_id+1 != commit_id) {
+	if (commit_id == *c.commit_id+1 && redo_stack.empty() && saved_commit_id+1 != commit_id) {
 		// If only one line changed just modify it instead of copying the file
 		if (c.single_line && c.single_line->Group() == AssEntryGroup::DIALOGUE) {
 			for (auto& diag : undo_stack.back().events) {

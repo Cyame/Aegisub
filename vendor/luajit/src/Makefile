@@ -7,12 +7,12 @@
 # Also works with MinGW and Cygwin on Windows.
 # Please check msvcbuild.bat for building with MSVC on Windows.
 #
-# Copyright (C) 2005-2014 Mike Pall. See Copyright Notice in luajit.h
+# Copyright (C) 2005-2015 Mike Pall. See Copyright Notice in luajit.h
 ##############################################################################
 
 MAJVER=  2
 MINVER=  0
-RELVER=  3
+RELVER=  4
 ABIVER=  5.1
 NODOTABIVER= 51
 
@@ -55,9 +55,9 @@ CCOPT_ppc=
 CCOPT_ppcspe=
 CCOPT_mips=
 #
-CCDEBUG=-g
+#CCDEBUG=
 # Uncomment the next line to generate debug information:
-#CCDEBUG= -g
+CCDEBUG= -g
 #
 CCWARN= -Wall -Wno-unused-function
 # Uncomment the next line to enable more warnings:
@@ -72,7 +72,7 @@ CCWARN= -Wall -Wno-unused-function
 # as dynamic mode.
 #
 # Mixed mode creates a static + dynamic library and a statically linked luajit.
-# BUILDMODE= mixed
+#BUILDMODE= mixed
 #
 # Static mode creates a static library and a statically linked luajit.
 BUILDMODE= static
@@ -122,8 +122,10 @@ XCFLAGS+= -DLUAJIT_ENABLE_LUA52COMPAT
 #
 # Use the system provided memory allocator (realloc) instead of the
 # bundled memory allocator. This is slower, but sometimes helpful for
-# debugging. It's helpful for Valgrind's memcheck tool, too. This option
-# cannot be enabled on x64, since the built-in allocator is mandatory.
+# debugging. This option cannot be enabled on x64, since realloc usually
+# doesn't return addresses in the right address range.
+# OTOH this option is mandatory for Valgrind's memcheck tool on x64 and
+# the only way to get useful results from it for all other architectures.
 #XCFLAGS+= -DLUAJIT_USE_SYSMALLOC
 #
 # This define is required to run LuaJIT under Valgrind. The Valgrind
@@ -188,9 +190,11 @@ TARGET_LD= $(CROSS)$(CC)
 TARGET_AR= $(CROSS)ar rcus
 TARGET_STRIP= $(CROSS)strip
 
-TARGET_LIBPATH= ${CURDIR}
+TARGET_LIBPATH= $(CURDIR)
+#TARGET_LIBPATH= $(or $(PREFIX),/usr/local)/$(or $(MULTILIB),lib)
 TARGET_SONAME= libluajit-$(ABIVER).so.$(MAJVER)
 TARGET_DYLIBNAME= libluajit-aegisub.so
+#TARGET_DYLIBNAME= libluajit-$(ABIVER).$(MAJVER).dylib
 TARGET_DYLIBPATH= $(TARGET_LIBPATH)/$(TARGET_DYLIBNAME)
 TARGET_DLLNAME= lua$(NODOTABIVER).dll
 TARGET_XSHLDFLAGS= -shared -fPIC -Wl,-soname,$(TARGET_SONAME)
@@ -288,15 +292,15 @@ ifeq (Windows,$(TARGET_SYS))
   TARGET_XSHLDFLAGS= -shared
   TARGET_DYNXLDOPTS=
 else
+ifeq (,$(shell $(TARGET_CC) -o /dev/null -c -x c /dev/null -fno-stack-protector 2>/dev/null || echo 1))
+  TARGET_XCFLAGS+= -fno-stack-protector
+endif
 ifeq (Darwin,$(TARGET_SYS))
   ifeq (,$(MACOSX_DEPLOYMENT_TARGET))
     export MACOSX_DEPLOYMENT_TARGET=10.4
   endif
   TARGET_STRIP+= -x
   TARGET_AR+= 2>/dev/null
-  ifeq (,$(shell $(TARGET_CC) -o /dev/null -c -x c /dev/null -fno-stack-protector 2>/dev/null || echo 1))
-    TARGET_XCFLAGS+= -fno-stack-protector
-  endif
   TARGET_XSHLDFLAGS= -dynamiclib -single_module -undefined dynamic_lookup -fPIC
   TARGET_DYNXLDOPTS=
   TARGET_XSHLDFLAGS+= -install_name $(TARGET_DYLIBPATH) -compatibility_version $(MAJVER).$(MINVER) -current_version $(MAJVER).$(MINVER).$(RELVER)
@@ -308,14 +312,10 @@ else
 ifeq (iOS,$(TARGET_SYS))
   TARGET_STRIP+= -x
   TARGET_AR+= 2>/dev/null
-  TARGET_XCFLAGS+= -fno-stack-protector
   TARGET_XSHLDFLAGS= -dynamiclib -single_module -undefined dynamic_lookup -fPIC
   TARGET_DYNXLDOPTS=
   TARGET_XSHLDFLAGS+= -install_name $(TARGET_DYLIBPATH) -compatibility_version $(MAJVER).$(MINVER) -current_version $(MAJVER).$(MINVER).$(RELVER)
 else
-  ifneq (,$(findstring stack-protector,$(shell $(TARGET_CC) -dumpspecs)))
-    TARGET_XCFLAGS+= -fno-stack-protector
-  endif
   ifneq (SunOS,$(TARGET_SYS))
     ifneq (PS3,$(TARGET_SYS))
       TARGET_XLDFLAGS+= -Wl,-E
@@ -494,6 +494,23 @@ TARGET_O= $(LUAJIT_A)
 TARGET_T= $(LUAJIT_T) $(LUAJIT_SO)
 TARGET_DEP= $(LIB_VMDEF) $(LUAJIT_SO)
 
+ifeq (Windows,$(TARGET_SYS))
+  TARGET_DYNCC= $(STATIC_CC)
+  LJVM_MODE= peobj
+  LJVM_BOUT= $(LJVM_O)
+  LUAJIT_T= luajit.exe
+  ifeq (cygwin,$(HOST_MSYS))
+    LUAJIT_SO= cyg$(TARGET_DLLNAME)
+  else
+    LUAJIT_SO= $(TARGET_DLLNAME)
+  endif
+  # Mixed mode is not supported on Windows. And static mode doesn't work well.
+  # C modules cannot be loaded, because they bind to lua51.dll.
+  ifneq (static,$(BUILDMODE))
+    BUILDMODE= dynamic
+    TARGET_XCFLAGS+= -DLUA_BUILD_AS_DLL
+  endif
+endif
 ifeq (Darwin,$(TARGET_SYS))
   LJVM_MODE= machasm
   # -dead_strip breaks LuaJIT, but we really want it for everything else, so we
@@ -545,10 +562,13 @@ endif
 endif
 endif
 
+ifeq ($(V),1)
+Q=
+E= @:
+else
 Q= @
 E= @echo
-#Q=
-#E= @:
+endif
 
 ##############################################################################
 # Make targets.

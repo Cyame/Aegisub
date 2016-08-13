@@ -284,17 +284,17 @@ namespace
 								text_rows.emplace_back();
 								cur_row = &text_rows.back();
 								cur_row->emplace_back("", underline, italic, true);
+
+								start = i + 2;
 							}
 							else // if (substr == " " || substr == "\\n")
 							{
 								cur_row->back().text.append(" ");
 								cur_row->emplace_back("", underline, italic, true);
-							}
 
-							if (text[i] == '\\')
-								start = ++i + 1;
-							else
-								start = i;
+								start = i + 1 + (text[i] == '\\');
+							}
+							++i;
 						}
 
 						// add the remaining text
@@ -526,15 +526,12 @@ namespace
 		return tti;
 	}
 
-#ifdef _MSC_VER
-#define vsnprintf _vsnprintf
-#endif
 	void fieldprintf(char *field, size_t fieldlen, const char *format, ...)
 	{
 		char buf[16];
 		va_list ap;
 		va_start(ap, format);
-		vsnprintf(buf, fieldlen, format, ap);
+		vsnprintf(buf, sizeof(buf), format, ap);
 		va_end(ap);
 		memcpy(field, buf, fieldlen);
 	}

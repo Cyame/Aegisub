@@ -22,7 +22,12 @@
 #include <wx/timer.h>
 
 class SelectionController;
-namespace agi { struct Context; }
+namespace agi {
+	namespace dispatch {
+		class Queue;
+	}
+	struct Context;
+}
 struct AssFileCommit;
 struct ProjectProperties;
 
@@ -43,9 +48,16 @@ class SubsController {
 	int saved_commit_id = 0;
 	/// Last autosaved version of this file
 	int autosaved_commit_id = 0;
+	/// Version to use for the next commit
+	/// Needed to handle Save -> Undo -> Edit, which would result in the file
+	/// being marked unmodified if we reused commit IDs
+	int next_commit_id = 1;
 
 	/// Timer for triggering autosaves
 	wxTimer autosave_timer;
+
+	/// Queue which autosaves are performed on
+	std::unique_ptr<agi::dispatch::Queue> autosave_queue;
 
 	/// A new file has been opened (filename)
 	agi::signal::Signal<agi::fs::path> FileOpen;
@@ -57,6 +69,9 @@ class SubsController {
 
 	/// Set the filename, updating things like the MRU and last used path
 	void SetFileName(agi::fs::path const& file);
+
+	/// Autosave the file if there have been any chances since the last autosave
+	void AutoSave();
 
 	void OnCommit(AssFileCommit c);
 	void OnActiveLineChanged();
@@ -96,10 +111,6 @@ public:
 	/// @param allow_cancel Let the user cancel the closing
 	/// @return wxYES, wxNO or wxCANCEL (note: all three are true in a boolean context)
 	int TryToClose(bool allow_cancel = true) const;
-
-	/// @brief Autosave the file if there have been any chances since the last autosave
-	/// @return File name used or empty if no save was performed
-	agi::fs::path AutoSave();
 
 	/// Can the file be saved in its current format?
 	bool CanSave() const;

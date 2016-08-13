@@ -14,12 +14,12 @@ $(DESTDIR)$(P_DATA)/automation/%: $(d)%
 
 aegisub-lua_OBJ := $(d)tests/aegisub.o $(TOP)lib/libaegisub.a $(TOP)lib/libluabins.a $(LIBS_LUA)
 aegisub-lua_CPPFLAGS := $(CPPFLAGS_BOOST) $(CFLAGS_LUA) -I$(TOP)libaegisub/include -I$(TOP)src $(CXXFLAGS_WX)
-aegisub-lua_LIBS := $(LIBS_WX) $(LIBS_BOOST) $(LIBS_ICU)
+aegisub-lua_LIBS := $(LIBS_WX) $(LIBS_BOOST) $(LIBS_ICU) $(LIBS_PTHREAD)
 
 PROGRAM += $(d)aegisub-lua
 
 test-automation: $(PROGRAM)
-	cd $(TOP)automation; LUA=./aegisub-lua busted -p 'moon' tests/modules
+	eval `luarocks path`; cd $(TOP)automation; ./aegisub-lua tests/busted.lua -p 'moon' tests/modules
 
 test: test-automation
 

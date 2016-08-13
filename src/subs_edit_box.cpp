@@ -96,6 +96,10 @@ void time_edit_char_hook(wxKeyEvent &event) {
 		event.Skip();
 }
 
+// Passing a pointer-to-member directly to a function sometimes does not work
+// in VC++ 2015 Update 2, with it instead passing a null pointer
+const auto AssDialogue_Actor = &AssDialogue::Actor;
+const auto AssDialogue_Effect = &AssDialogue::Effect;
 }
 
 SubsEditBox::SubsEditBox(wxWindow *parent, agi::Context *context)
@@ -272,7 +276,7 @@ void SubsEditBox::MakeButton(const char *cmd_name) {
 	wxBitmapButton *btn = new wxBitmapButton(this, -1, command->Icon(16));
 	ToolTipManager::Bind(btn, command->StrHelp(), "Subtitle Edit Box", cmd_name);
 
-	middle_right_sizer->Add(btn, wxSizerFlags().Center().Expand());
+	middle_right_sizer->Add(btn, wxSizerFlags().Expand());
 	btn->Bind(wxEVT_BUTTON, std::bind(&SubsEditBox::CallCommand, this, cmd_name));
 }
 
@@ -296,9 +300,10 @@ wxComboBox *SubsEditBox::MakeComboBox(wxString const& initial_text, int style, v
 
 wxRadioButton *SubsEditBox::MakeRadio(wxString const& text, bool start, wxString const& tooltip) {
 	wxRadioButton *ctrl = new wxRadioButton(this, -1, text, wxDefaultPosition, wxDefaultSize, start ? wxRB_GROUP : 0);
+	ctrl->SetValue(start);
 	ctrl->SetToolTip(tooltip);
 	Bind(wxEVT_RADIOBUTTON, &SubsEditBox::OnFrameTimeRadio, this, ctrl->GetId());
-	middle_right_sizer->Add(ctrl, wxSizerFlags().Center().Expand().Border(wxRIGHT));
+	middle_right_sizer->Add(ctrl, wxSizerFlags().Expand().Border(wxRIGHT));
 	return ctrl;
 }
 
@@ -316,8 +321,8 @@ void SubsEditBox::OnCommit(int type) {
 	}
 
 	if (type == AssFile::COMMIT_NEW) {
-		PopulateList(effect_box, &AssDialogue::Effect);
-		PopulateList(actor_box, &AssDialogue::Actor);
+		PopulateList(effect_box, AssDialogue_Effect);
+		PopulateList(actor_box, AssDialogue_Actor);
 		return;
 	}
 	else if (type & AssFile::COMMIT_STYLES)
@@ -352,11 +357,11 @@ void SubsEditBox::UpdateFields(int type, bool repopulate_lists) {
 		active_style = line ? c->ass->GetStyle(line->Style) : nullptr;
 		style_edit_button->Enable(active_style != nullptr);
 
-		if (repopulate_lists) PopulateList(effect_box, &AssDialogue::Effect);
+		if (repopulate_lists) PopulateList(effect_box, AssDialogue_Effect);
 		effect_box->ChangeValue(to_wx(line->Effect));
 		effect_box->SetStringSelection(to_wx(line->Effect));
 
-		if (repopulate_lists) PopulateList(actor_box, &AssDialogue::Actor);
+		if (repopulate_lists) PopulateList(actor_box, AssDialogue_Actor);
 		actor_box->ChangeValue(to_wx(line->Actor));
 		actor_box->SetStringSelection(to_wx(line->Actor));
 	}
@@ -588,8 +593,8 @@ void SubsEditBox::OnStyleChange(wxCommandEvent &evt) {
 
 void SubsEditBox::OnActorChange(wxCommandEvent &evt) {
 	bool amend = evt.GetEventType() == wxEVT_TEXT;
-	SetSelectedRows(&AssDialogue::Actor, new_value(actor_box, evt), _("actor change"), AssFile::COMMIT_DIAG_META, amend);
-	PopulateList(actor_box, &AssDialogue::Actor);
+	SetSelectedRows(AssDialogue_Actor, new_value(actor_box, evt), _("actor change"), AssFile::COMMIT_DIAG_META, amend);
+	PopulateList(actor_box, AssDialogue_Actor);
 }
 
 void SubsEditBox::OnLayerEnter(wxCommandEvent &evt) {
@@ -598,8 +603,8 @@ void SubsEditBox::OnLayerEnter(wxCommandEvent &evt) {
 
 void SubsEditBox::OnEffectChange(wxCommandEvent &evt) {
 	bool amend = evt.GetEventType() == wxEVT_TEXT;
-	SetSelectedRows(&AssDialogue::Effect, new_value(effect_box, evt), _("effect change"), AssFile::COMMIT_DIAG_META, amend);
-	PopulateList(effect_box, &AssDialogue::Effect);
+	SetSelectedRows(AssDialogue_Effect, new_value(effect_box, evt), _("effect change"), AssFile::COMMIT_DIAG_META, amend);
+	PopulateList(effect_box, AssDialogue_Effect);
 }
 
 void SubsEditBox::OnCommentChange(wxCommandEvent &evt) {

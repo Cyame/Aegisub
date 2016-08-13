@@ -2,12 +2,13 @@
 # AEGISUB FEATURE SUPPORT
 #########################
 HAVE_ALSA       = @with_alsa@
+HAVE_FFMS2      = @with_ffms2@
 HAVE_HUNSPELL   = @with_hunspell@
+HAVE_LIBPULSE   = @with_libpulse@
 HAVE_OPENAL     = @with_openal@
 HAVE_OSS        = @with_oss@
 HAVE_PORTAUDIO  = @with_portaudio@
-HAVE_FFMS2      = @with_ffms2@
-HAVE_LIBPULSE   = @with_libpulse@
+HAVE_UCHARDET   = @with_uchardet@
 
 ##############
 # BUILD OUTPUT
@@ -78,12 +79,12 @@ CFLAGS_ICONV       = @ICONV_CFLAGS@
 CFLAGS_ICU         = @ICU_I18N_CFLAGS@
 CFLAGS_LIBASS      = @LIBASS_CFLAGS@
 CFLAGS_LIBPULSE    = @LIBPULSE_CFLAGS@
-CFLAGS_LUA         = -I$(TOP)vendor/luajit/include
+CFLAGS_LUA         = @LUAJIT_CFLAGS@
 CFLAGS_OPENAL      = @OPENAL_CFLAGS@
 CFLAGS_OSS         = @OSS_CFLAGS@
 CFLAGS_PORTAUDIO   = @PORTAUDIO_CFLAGS@
 CFLAGS_PTHREAD     = @PTHREAD_CFLAGS@
-CFLAGS_UCHARDET    = -I$(TOP)vendor/universalchardet
+CFLAGS_UCHARDET    = @UCHARDET_CFLAGS@
 
 LIBS_ALSA          = @ALSA_LIBS@
 LIBS_FFMS2         = @FFMS2_LIBS@
@@ -96,10 +97,11 @@ LIBS_ICONV         = @ICONV_LIBS@
 LIBS_ICU           = @ICU_UC_LIBS@ @ICU_I18N_LIBS@
 LIBS_LIBASS        = @LIBASS_LIBS@
 LIBS_LIBPULSE      = @LIBPULSE_LIBS@
-LIBS_LUA           = $(TOP)vendor/luajit/src/libluajit.a
+LIBS_LUA           = @LUAJIT_LIBS@
 LIBS_OPENAL        = @OPENAL_LIBS@
 LIBS_PORTAUDIO     = @PORTAUDIO_LIBS@
-LIBS_PTHREAD       = @PTHREAD_LIBS@
+LIBS_PTHREAD       = @PTHREAD_CFLAGS@ @PTHREAD_LIBS@
+LIBS_UCHARDET      = @UCHARDET_LIBS@
 
 ifeq (yes, $(BUILD_DARWIN))
 LIBS_LUA           = $(TOP)vendor/luajit/src/libluajit-aegisub.so
@@ -133,4 +135,5 @@ BIN_MKDIR    = mkdir
 BIN_MKDIR_P  = mkdir -p
 BIN_ECHO     = echo
 BIN_TOUCH    = touch
+BIN_LUA      = @LUA@
 BIN_WX_CONFIG = @WX_CONFIG_PATH@

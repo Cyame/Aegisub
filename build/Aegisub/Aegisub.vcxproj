@@ -26,6 +26,10 @@
       <ForcedIncludeFiles>agi_pre.h</ForcedIncludeFiles>
       <AdditionalOptions>/Zm150 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories Condition="'$(Platform)'=='Win32'">$(DXSDK_DIR)\Lib\x86</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Platform)'=='x64'">$(DXSDK_DIR)\Lib\x64</AdditionalLibraryDirectories>
+    </Link>
   </ItemDefinitionGroup>
 
   <!-- Update git_version.h -->
@@ -49,9 +53,6 @@
     </ProjectReference>
     <ProjectReference Include="..\freetype2\freetype.vcxproj" Condition="Exists('$(Freetype2SrcDir)')">
       <Project>{78b079bd-9fc7-4b9e-b4a6-96da0f00248b}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\fontconfig\fontconfig.vcxproj" Condition="Exists('$(FontconfigSrcDir)')">
-      <Project>{ad56899e-961b-47b7-bd0f-14d0da50d141}</Project>
     </ProjectReference>
     <ProjectReference Include="..\fribidi\fribidi.vcxproj">
       <Project>{fb8e8d19-a4d6-4181-943c-282075f49b41}</Project>
@@ -349,7 +350,7 @@
     </ClCompile>
     <ClCompile Include="$(SrcDir)fft.cpp" />
     <ClCompile Include="$(SrcDir)font_file_lister.cpp" />
-    <ClCompile Include="$(SrcDir)font_file_lister_fontconfig.cpp" />
+    <ClCompile Include="$(SrcDir)font_file_lister_gdi.cpp" />
     <ClCompile Include="$(SrcDir)frame_main.cpp" />
     <ClCompile Include="$(SrcDir)gl_text.cpp" />
     <ClCompile Include="$(SrcDir)gl_wrap.cpp" />

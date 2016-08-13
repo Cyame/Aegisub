@@ -107,6 +107,9 @@
 		]
 	},
 	"Default" : {
+		"app/minimize" : [
+			"Ctrl-M"
+		],
 		"app/exit" : [
 			"Ctrl-Q"
 		],
@@ -166,6 +169,9 @@
 		],
 		"subtitle/new" : [
 			"Ctrl-N"
+		],
+		"subtitle/close" : [
+			"Ctrl-W"
 		],
 		"subtitle/open" : [
 			"Ctrl-O"
